@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BookClub - Minha Estante</title>
+    <link rel="stylesheet" href="home.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="sidebar-brand"><img src="logo.jpg" class="sidebar-logo"><span>BookClub</span></div>
+            <nav class="sidebar-menu">
+                <a href="home.html" class="nav-item"><i class="fa-solid fa-house"></i> Início</a>
+                <a href="estante.html" class="nav-item active"><i class="fa-solid fa-book-open"></i> Meus Livros</a>
+                <a href="descobrir.html" class="nav-item"><i class="fa-solid fa-compass"></i> Descobrir</a>
+                <a href="perfil.html" class="nav-item"><i class="fa-solid fa-user"></i> Perfil</a>
+            </nav>
+            <button class="btn-logout" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> Sair</button>
+        </aside>
+
+        <section class="content-area">
+            <header class="view-header">
+                <div>
+                    <h1>Minha Estante</h1>
+                    <p class="subtitle">Gerencie suas leituras e acervo pessoal.</p>
+                </div>
+                <div class="user-pill"><img id="shelf-avatar" src=""></div>
+            </header>
+
+            <div class="search-filter-bar">
+                <div class="search-box">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" id="shelf-search" placeholder="Buscar na minha estante...">
+                </div>
+            </div>
+
+            <div id="shelf-display-results"></div>
+        </section>
+    </div>
+    <script src="livrosData.js"></script>
+    <script src="estante.js"></script>
+</body>
+</html>

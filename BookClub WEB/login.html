@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BookClub - Entrar</title>
+    <link rel="stylesheet" href="login.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="auth-bg-overlay"></div>
+    
+    <div class="auth-card">
+        <div class="auth-header">
+            <img src="logo.jpg" alt="BookClub Logo" class="app-logo-img">
+            <h2 id="auth-title">Explore o Oceano de Histórias</h2>
+            <p id="auth-subtitle">Sua próxima leitura está te esperando.</p>
+        </div>
+
+        <form id="form-login" class="auth-form">
+            <div class="input-group">
+                <label for="login-email">E-MAIL</label>
+                <input type="email" id="login-email" placeholder="seuemail@exemplo.com" required>
+            </div>
+            <div class="input-group">
+                <label for="login-password">SENHA</label>
+                <div class="password-wrapper">
+                    <input type="password" id="login-password" placeholder="••••••" required>
+                    <button type="button" class="toggle-password" onclick="togglePasswordVisibility('login-password')">
+                        <i class="fa-regular fa-eye"></i>
+                    </button>
+                </div>
+            </div>
+            <button type="submit" class="btn-primary">Entrar</button>
+            <p class="auth-switch">Não tem conta? <a href="#" onclick="switchAuthMode('register')">Cadastre-se</a></p>
+        </form>
+
+        <form id="form-register" class="auth-form hidden">
+            <!-- Adicionar dentro do form-register no login.html -->
+<div class="input-group">
+    <label for="reg-username">NOME DE USUÁRIO (@)</label>
+    <input type="text" id="reg-username" placeholder="ex: alicia_silva" required>
+</div>
+            <div class="input-group">
+                <label for="reg-name">NOME COMPLETO</label>
+                <input type="text" id="reg-name" placeholder="Como quer ser chamada(o)?" required>
+            </div>
+            <div class="input-group">
+                <label for="reg-email">E-MAIL</label>
+                <input type="email" id="reg-email" placeholder="seuemail@exemplo.com" required>
+            </div>
+            <div class="input-group">
+                <label for="reg-password">SENHA</label>
+                <div class="password-wrapper">
+                    <input type="password" id="reg-password" placeholder="Crie uma senha forte" required>
+                    <button type="button" class="toggle-password" onclick="togglePasswordVisibility('reg-password')">
+                        <i class="fa-regular fa-eye"></i>
+                    </button>
+                </div>
+            </div>
+            <button type="submit" class="btn-primary">Criar Conta</button>
+            <p class="auth-switch">Já tem uma conta? <a href="#" onclick="switchAuthMode('login')">Faça Login</a></p>
+        </form>
+    </div>
+
+    <script src="auth.js"></script>
+</body>
+</html>

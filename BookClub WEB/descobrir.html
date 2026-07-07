@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BookClub - Descobrir</title>
+    <link rel="stylesheet" href="home.css">
+    <link rel="stylesheet" href="descobrir.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Estilos rápidos para o modal de cadastro */
+        .btn-add-book { background-color: #10b981; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; height: 40px; white-space: nowrap; }
+        .btn-add-book:hover { background-color: #059669; }
+        .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .form-group-add { margin-bottom: 15px; }
+        .form-group-add label { display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin-bottom: 5px; }
+        .form-group-add input, .form-group-add select, .form-group-add textarea { width: 100%; background-color: var(--bg-main); border: 1px solid var(--border-color); padding: 10px; border-radius: 6px; color: white; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="sidebar-brand"><img src="logo.jpg" class="sidebar-logo"><span>BookClub</span></div>
+            <nav class="sidebar-menu">
+                <a href="home.html" class="nav-item"><i class="fa-solid fa-house"></i> Início</a>
+                <a href="estante.html" class="nav-item"><i class="fa-solid fa-book-open"></i> Meus Livros</a>
+                <a href="descobrir.html" class="nav-item active"><i class="fa-solid fa-compass"></i> Descobrir</a>
+                <a href="perfil.html" class="nav-item"><i class="fa-solid fa-user"></i> Perfil</a>
+            </nav>
+            <button class="btn-logout" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> Sair</button>
+        </aside>
+
+        <section class="content-area">
+            <header class="view-header">
+                <div>
+                    <h1>Descobrir Histórias</h1>
+                    <p class="subtitle">Encontre novos suspenses e thrillers recomendados.</p>
+                </div>
+                <div class="user-pill"><img id="discover-avatar" src=""></div>
+            </header>
+
+            <div class="search-filter-bar">
+                <div class="search-box">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" id="discover-search" placeholder="Pesquisar por título ou autor...">
+                </div>
+                <div class="filter-tabs">
+                    <button class="tab-btn active" onclick="filterGenre('todos', this)">Todos</button>
+                    <button class="tab-btn" onclick="filterGenre('Thriller Psicológico', this)">Thrillers</button>
+                    <button class="tab-btn" onclick="filterGenre('Suspense', this)">Suspense</button>
+                </div>
+                <!-- Botão de Cadastrar -->
+                <button class="btn-add-book" onclick="openAddBookModal()"><i class="fa-solid fa-plus"></i> Sugerir Livro</button>
+            </div>
+
+            <div id="discover-display-results" class="books-grid"></div>
+        </section>
+    </div>
+
+    <!-- Modal de Cadastro de Novo Livro -->
+    <div id="add-book-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 550px;">
+            <button class="close-modal" onclick="closeAddBookModal()">&times;</button>
+            <h2 style="margin-bottom: 5px;">Sugerir Nova Obra</h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px;">Insira as informações para disponibilizar o livro no acervo global do app.</p>
+            
+            <form id="form-add-book">
+                <div class="form-group-add">
+                    <label>TÍTULO DO LIVRO</label>
+                    <input type="text" id="add-title" placeholder="Ex: A Empregada" required>
+                </div>
+                <div class="form-group-add">
+                    <label>AUTOR(A)</label>
+                    <input type="text" id="add-author" placeholder="Ex: Freida McFadden" required>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-group-add">
+                        <label>GÊNERO</label>
+                        <select id="add-genre">
+                            <option value="Thriller Psicológico">Thriller Psicológico</option>
+                            <option value="Suspense">Suspense</option>
+                            <option value="Ficção">Ficção / Outros</option>
+                        </select>
+                    </div>
+                    <div class="form-group-add">
+                        <label>ANO DE LANÇAMENTO</label>
+                        <input type="number" id="add-date" placeholder="Ex: 2023" required>
+                    </div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-group-add">
+                        <label>TOTAL DE PÁGINAS</label>
+                        <input type="number" id="add-pages" placeholder="Ex: 350" required>
+                    </div>
+                    <div class="form-group-add">
+                        <label>URL DA CAPA (IMAGEM)</label>
+                        <input type="url" id="add-cover" placeholder="https://link-da-imagem.com/capa.jpg">
+                    </div>
+                </div>
+                <div class="form-group-add">
+                    <label>SINOPSE / RESUMO</label>
+                    <textarea id="add-synopsis" rows="4" placeholder="Conte um pouco sobre a premissa do livro..." required></textarea>
+                </div>
+                <button type="submit" class="btn-primary" style="background: #10b981; margin-top: 10px;">Adicionar ao Catálogo</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="livrosData.js"></script>
+    <script src="descobrir.js"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+:root {
+    --bg-main: #070a13;
+    --bg-card: #0f1524;
+    --bg-input: #172036;
+    --accent-blue: #2563eb;
+    --text-main: #f3f4f6;
+    --text-muted: #9ca3af;
+    --border-color: #1e293b;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+body { background-color: var(--bg-main); color: var(--text-main); height: 100vh; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+.hidden { display: none !important; }
+
+@keyframes tentacleWave {
+    0%, 100% { transform: scale(1) translateY(0) rotate(0deg); }
+    50% { transform: scale(1.04) translateY(-15px) rotate(1.5deg); }
+}
+.auth-bg-overlay {
+    position: absolute; bottom: 0; left: 0; width: 100%; height: 100%;
+    background-image: url('fundo.png'); background-size: contain; background-position: bottom center; background-repeat: no-repeat;
+    opacity: 0.35; z-index: 1; animation: tentacleWave 9s ease-in-out infinite; pointer-events: none;
+}
+.auth-card {
+    position: relative; z-index: 2; background: rgba(15, 21, 36, 0.85); backdrop-filter: blur(20px);
+    border: 1px solid var(--border-color); padding: 40px; border-radius: 16px; width: 100%; max-width: 440px;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.6); animation: fadeIn 0.5s ease-out;
+}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+.auth-header { text-align: center; margin-bottom: 25px; }
+.app-logo-img { width: 75px; height: 75px; border-radius: 50%; object-fit: cover; margin-bottom: 12px; border: 2px solid var(--accent-blue); }
+.auth-header h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px; }
+.auth-header p { color: var(--text-muted); font-size: 0.85rem; }
+.input-group { margin-bottom: 18px; }
+.input-group label { display: block; font-size: 0.7rem; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; letter-spacing: 0.05em; }
+.input-group input { width: 100%; background-color: var(--bg-input); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; color: var(--text-main); font-size: 0.9rem; transition: border 0.2s; }
+.input-group input:focus { border-color: var(--accent-blue); outline: none; }
+.password-wrapper { position: relative; }
+.toggle-password { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; }
+.btn-primary { width: 100%; background: linear-gradient(135deg, var(--accent-blue), #1d4ed8); color: white; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; font-size: 0.95rem; margin-top: 5px; }
+.btn-primary:hover { opacity: 0.9; }
+.auth-switch { text-align: center; margin-top: 18px; font-size: 0.85rem; color: var(--text-muted); }
+.auth-switch a { color: var(--accent-blue); text-decoration: none; font-weight: 600; }
