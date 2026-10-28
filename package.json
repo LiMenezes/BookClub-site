@@ -1,0 +1,30 @@
+{
+  "name": "bookclub",
+  "version": "2.3.0",
+  "private": true,
+  "description": "BookClub - rede social literária com autenticação, PostgreSQL e Google Books",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/local.js",
+    "local": "node backend/local.js",
+    "start:postgres": "node backend/server.js",
+    "dev": "node --watch backend/local.js",
+    "test": "node --test --test-concurrency=1 tests/integration.cjs tests/production.cjs",
+    "moderator": "node backend/moderator.js",
+    "test:postgres": "node --test tests/postgres.cjs",
+    "preflight": "node backend/preflight.js",
+    "backup": "node backend/backup.js backup",
+    "restore": "node backend/backup.js restore"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.12",
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "nodemailer": "^10.2.1",
+    "pg": "^8.16.3"
+  }
+}

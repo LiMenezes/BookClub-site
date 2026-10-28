@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: bookclub-alicia-yasmin
+    runtime: node
+    plan: free
+    region: virginia
+    buildCommand: npm ci --omit=dev
+    startCommand: npm run start:postgres
+    healthCheckPath: /api/health
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: NODE_ENV
+        value: production
+      - key: DB_DRIVER
+        value: postgres
+      - key: DB_SCHEMA
+        value: bookclub
+      - key: DB_SSL
+        value: verify
+      - key: DB_POOL_MAX
+        value: 5
+      - key: REQUIRE_EMAIL
+        value: true
+      - key: APP_ORIGIN
+        fromService:
+          type: web
+          name: bookclub-alicia-yasmin
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: TRUST_PROXY
+        value: 1
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_SSL_CA
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
