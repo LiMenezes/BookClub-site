@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bookclub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bookclub
+      POSTGRES_PASSWORD: bookclub
+      POSTGRES_DB: bookclub
+    ports:
+      - "5432:5432"
+    volumes:
+      - bookclub_pgdata:/var/lib/postgresql/data
+volumes:
+  bookclub_pgdata:
