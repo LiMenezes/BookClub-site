@@ -1,0 +1,3 @@
+require('dotenv').config({path:require('node:path').join(__dirname,'..','.env'),quiet:true});
+const {openDatabase}=require('./db');
+(async()=>{const username=process.argv[2];if(!username)throw Error('Informe o usuário: npm run moderator -- nome_do_usuario');const db=await openDatabase();try{const r=await db.query('UPDATE users SET is_admin=TRUE WHERE username=$1 RETURNING username',[username]);if(!r.rows.length)throw Error('Usuário não encontrado.');console.log('Moderador configurado:',r.rows[0].username);}finally{await db.close();}})().catch(e=>{console.error(e.message);process.exitCode=1;});
