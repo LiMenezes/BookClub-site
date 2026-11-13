@@ -41,7 +41,12 @@ test('BookClub: autenticação, privacidade e jornadas com PostgreSQL real embut
    await call('/shelf/'+book.id,alice.cookie,{status:'lendo',current_page:500},'PUT',400);
    const shelf=await call('/shelf/'+book.id,alice.cookie,{status:'lendo',current_page:206,tags:['favorito'],started_on:'2026-01-01'},'PUT');assert.equal(shelf.progress,50);
    const year=new Date().getFullYear();await call('/goals',alice.cookie,{name:'Meu ano',target:2,starts_on:year+'-01-01',ends_on:year+'-12-31'},'POST',201);
-   await call('/shelf/'+book.id,alice.cookie,{status:'lido'},'PUT');await call('/shelf/'+book.id,alice.cookie,{status:'lido'},'PUT');assert.equal((await call('/history',alice.cookie)).length,1);
+   const finished=year+'-01-02';
+   await call('/shelf/'+book.id,alice.cookie,{status:'lido',finished_on:finished},'PUT');
+   const edited=await call('/shelf/'+book.id,alice.cookie,{status:'lido',tags:['favorito','recomendado'],started_on:''},'PUT');
+   assert.equal(new Date(edited.finished_on).toISOString().slice(0,10),finished,'Editar etiquetas não pode substituir a conclusão pela data de hoje');
+   assert.equal(edited.started_on,null,'Uma data opcional pode ser removida');assert.equal(edited.current_page,412,'Livro concluído deve mostrar a última página');
+   const firstHistory=await call('/history',alice.cookie);assert.equal(firstHistory.length,1);assert.equal(new Date(firstHistory[0].finished_on).toISOString().slice(0,10),finished);
    await call('/shelf/'+book.id,alice.cookie,{status:'lendo',current_page:0},'PUT');await call('/shelf/'+book.id,alice.cookie,{status:'lido'},'PUT');assert.equal((await call('/history',alice.cookie)).length,2);
    const goals=await call('/goals',alice.cookie);assert.equal(goals[0].completed,2);const stats=await call('/stats',alice.cookie);assert.equal(stats.read,2);assert.equal(stats.pages,824);
    await call('/shelf/'+book.id,alice.cookie,{status:'pausado'},'PUT');

@@ -4,6 +4,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS links JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS favorites JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username_changed_at TIMESTAMPTZ;
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_ci ON users(lower(email));
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_ci ON users(lower(username));
 ALTER TABLE books ADD COLUMN IF NOT EXISTS dedupe_key TEXT;
@@ -41,3 +42,8 @@ CREATE INDEX IF NOT EXISTS comments_review_idx ON comments(review_id,created_at)
 CREATE INDEX IF NOT EXISTS lists_user_idx ON lists(user_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS activity_user_idx ON activities(user_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS auth_tokens_expiry_idx ON auth_tokens(expires_at);
+
+ALTER TABLE books ADD COLUMN IF NOT EXISTS source_genre TEXT;
+
+CREATE TABLE IF NOT EXISTS discovery_days(day DATE PRIMARY KEY,week_start DATE NOT NULL,genre TEXT NOT NULL,book JSONB NOT NULL);
+CREATE INDEX IF NOT EXISTS discovery_week_idx ON discovery_days(week_start);

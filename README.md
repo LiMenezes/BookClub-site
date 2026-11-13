@@ -1,4 +1,4 @@
-# BookClub 2.3
+# BookClub 2.6
 
 Rede social literária com interface em preto, creme e azul claro, baseada nas telas mobile fornecidas por Alicia e Yasmin. O frontend ativo está em `public/` e o backend em `backend/`. As páginas antigas de `src/` redirecionam pelo servidor para os fluxos novos. O navegador não é mais a fonte de verdade dos dados.
 
@@ -110,3 +110,50 @@ Os arquivos originais foram preservados no backup da revisão. O servidor usa um
 ## Validação de produção
 
 `npm test`: 16 testes passaram nesta revisão. `npm run test:postgres` exige TEST_DATABASE_URL e ferramentas PostgreSQL; sua execução na infraestrutura externa ainda está pendente. `npm run preflight` verifica configuração e conexão. Backups e restauração em banco separado usam `npm run backup` e `npm run restore`; veja PUBLICACAO.md. Auditoria das dependências: zero vulnerabilidades informadas nesta revisão.
+
+
+## Revisão de novembro: fontes, catálogo e gêneros
+
+As fontes Fraunces 700/600 itálico e Nunito Sans 400/600/700 são as mesmas do código do aplicativo e ficam em public/fonts, junto das licenças. Não dependem de Google Fonts durante o uso.
+
+A busca prioriza português no Google Books e edições brasileiras por ISBN na BrasilAPI (CBL/Mercado Editorial). A Open Library ajuda na descoberta de ISBNs brasileiros e nas capas. Não traduzimos títulos nem inventamos sinopses. Os metadados dependem dos catálogos: nenhuma API assegura capa oficial e sinopse para todas as edições. Uma capa de reserva identificada aparece quando a imagem não existe ou falha; também é possível enviar uma capa manualmente.
+
+Configure GOOGLE_BOOKS_API_KEY no .env para usar uma cota própria do Google Books; sem chave, o serviço retornou 429 na consulta real desta revisão. Em falhas, o site tenta a fonte brasileira e informa indisponibilidade quando necessário. Não são contratados serviços pagos.
+
+Gêneros importados são convertidos para a lista única do BookClub. Ao iniciar, valores antigos são normalizados e o valor original fica preservado em books.source_genre. O responsável pelo cadastro ou a moderação pode usar Corrigir gênero na página do livro. Ficção é uma categoria própria: não é convertida automaticamente em Romance ou Ficção científica.
+
+## Ativar Google localmente
+
+A credencial é do tipo Aplicativo da Web, no projeto Google Cloud escolhido pelo responsável. Configure:
+
+- Origem JavaScript: http://localhost:3000
+- URI de redirecionamento: http://localhost:3000/api/auth/oauth/google/callback
+- Nome e contato no consentimento; modo de teste enquanto o projeto estiver em desenvolvimento.
+- Somente escopos openid, email e profile.
+
+Baixe o JSON da credencial e execute, na pasta do projeto:
+
+    npm run setup:google -- "C:/caminho/client_secret.json"
+
+O configurador valida o tipo Web e o retorno autorizado, grava as credenciais apenas no .env e não exibe os segredos. Reinicie o servidor e abra http://localhost:3000. O botão aparece em login e cadastro quando GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET estão configurados. Enquanto isso, o cadastro manual continua disponível.
+
+Nunca publique o JSON, .env ou chaves no GitHub/ZIP. Para publicar no futuro, crie um cliente separado de produção com o domínio HTTPS correto. A sessão Google exige uma aprovação real do usuário; testes simulados não comprovam essa aprovação nem a configuração da conta no Google.
+
+## Catálogo: validação de 12/11/2026
+
+Google Books API ativada no projeto BookClub e chave local restrita a Books API. Consultas reais por Duna e Dom Casmurro retornaram edições pt-BR com sinopse e URL de capa. O filtro aceita pt, pt-BR e pt-PT, e descarta resultados em outros idiomas mesmo quando o provedor os devolve. As credenciais permanecem apenas no .env desta instalação, excluídas do ZIP. Reinicie o servidor após mudanças no .env.
+
+
+## Descobertas e organização da página inicial (2.5)
+
+O card Descoberta do dia muda na meia-noite de America/Sao_Paulo. O tema muda na segunda-feira, na ordem Terror, Romance, Suspense, Fantasia e Ficção científica, repetindo o ciclo; a semana iniciada em 09/11/2026 é de Terror. As escolhas ficam salvas em discovery_days para permanecerem estáveis durante o dia e após reinícios. O servidor evita repetir a mesma obra na semana. Não é preciso cron nem serviço pago.
+
+O clube fornece livros do tema e o catálogo em português complementa a curadoria quando necessário. Se não houver um livro disponível, o site informa a indisponibilidade, sem inventar resenhas ou obras. Uma sugestão externa só vira cadastro após a ação de um leitor. Quero ler preserva o estado de uma leitura que já estava na estante.
+
+Bem avaliados usa somente resenhas visíveis ao usuário. Notas de contas privadas não autorizadas não entram na classificação. Novos no clube usa a data de cadastro, sem apresentá-la como lançamento editorial. A estante tem cartões de leituras em andamento e filtros das situações de leitura.
+
+Testes adicionais em tests/discovery.cjs cobrem calendário de Brasília, troca de gênero, persistência, não repetição, acessos simultâneos, ausência de importação automática e privacidade das notas.
+
+## Nome de usuário
+
+O @ pode ser alterado em Perfil → Editar perfil. A primeira troca é livre; as seguintes exigem dez dias. A exclusividade considera apenas o @ atual, sem reservar nomes anteriores. Contas Google conservam o @ escolhido.

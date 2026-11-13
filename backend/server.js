@@ -6,14 +6,17 @@ const path=require('node:path');
 const bcrypt=require('bcryptjs');
 const {openDatabase}=require('./db');
 const V=require('./validation');
+const {createCatalog}=require('./catalog');
+const {createDiscovery}=require('./discovery');
+const {GENRES,genre:canonicalGenre,normalizeStoredGenres}=require('./genres');
 const {mailConfigured,sendMail}=require('./mailer');
 const {productionConfig}=require('./config');
 const hash=s=>crypto.createHash('sha256').update(s).digest('hex');
 const random=()=>crypto.randomBytes(32).toString('base64url');
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Sao_Paulo'}).format(new Date());
 const cookie=(req,key)=>String(req.headers.cookie||'').split(';').map(x=>x.trim().split('=')).find(x=>x[0]===key)?.[1];
 
-async function createApp({db,env=process.env,mailSink}={}){
+async function createApp({db,env=process.env,mailSink,fetchImpl=fetch}={}){
  if(env.NODE_ENV==='production'){const errors=productionConfig(env);if(errors.length)throw new Error(errors.join(' '));}
  db ||= await openDatabase(env);
  await db.transaction(async tx=>{await tx.query('SELECT pg_advisory_xact_lock(817235)');
@@ -23,6 +26,7 @@ async function createApp({db,env=process.env,mailSink}={}){
      for(const sql of statements)await tx.query(sql);
    }}
  });
+ await normalizeStoredGenres(db);
  if(db.harden)await db.harden();
  const app=express();app.disable('x-powered-by');if(env.TRUST_PROXY)app.set('trust proxy',V.integer(env.TRUST_PROXY,1,3));
  const prod=env.NODE_ENV==='production';
@@ -51,7 +55,7 @@ async function createApp({db,env=process.env,mailSink}={}){
  const q=(sql,p=[])=>db.query(sql,p);
  const one=async(sql,p=[])=> (await q(sql,p)).rows[0];
  const publicUser=u=>({id:u.id,name:u.name,username:u.username,avatar:u.avatar,banner:u.banner,bio:u.bio,is_private:u.is_private,links:u.links,favorites:u.favorites,created_at:u.created_at});
- const ownUser=u=>({...publicUser(u),email:u.email,email_verified:u.email_verified,reading_goal:u.reading_goal,is_admin:u.is_admin});
+ const ownUser=u=>({...publicUser(u),email:u.email,email_verified:u.email_verified,reading_goal:u.reading_goal,is_admin:u.is_admin,username_changed_at:u.username_changed_at||null,username_change_available_at:u.username_changed_at?new Date(new Date(u.username_changed_at).getTime()+10*86400000).toISOString():null});
  const auth=async(req,res,next)=>{
    const token=cookie(req,'bc_session');
    const u=token&&await one('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND s.expires_at>NOW()',[hash(token)]);
@@ -73,11 +77,10 @@ async function createApp({db,env=process.env,mailSink}={}){
    else if(mailConfigured(env))await sendMail(mail,env);
    else V.fail('Envio de e-mail não configurado no servidor.',503);
  };
- app.get('/api/config',(req,res)=>res.json({email:!!(mailConfigured(env)||mailSink),oauth:{google:!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET),github:!!(env.GITHUB_CLIENT_ID&&env.GITHUB_CLIENT_SECRET)},local:env.DB_DRIVER==='pglite'}));
+ app.get('/api/config',(req,res)=>res.json({version:"2.6.0",genres:GENRES,email:!!(mailConfigured(env)||mailSink),oauth:{google:!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET),github:!!(env.GITHUB_CLIENT_ID&&env.GITHUB_CLIENT_SECRET)},local:env.DB_DRIVER==='pglite'}));
  app.get('/api/health',async(req,res)=>{await q('SELECT 1');res.json({ok:true});});
  app.post('/api/auth/register',async(req,res)=>{
-   const name=V.text(req.body.name,2,120),username=V.text(req.body.username,3,40).toLowerCase().replace(/^@/,'');
-   if(!/^[a-z0-9][a-z0-9_.-]{2,39}$/.test(username))V.fail('Use de 3 a 40 letras, números, ponto, hífen ou sublinhado no usuário.');
+   const name=V.text(req.body.name,2,120),username=V.username(req.body.username);
    const email=V.text(req.body.email,3,255).toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))V.fail('E-mail inválido.');
    const password=V.password(req.body.password);
    const u=await one('INSERT INTO users(name,username,email,password_hash) VALUES($1,$2,$3,$4) RETURNING *',[name,username,email,await bcrypt.hash(password,12)]);
@@ -101,7 +104,15 @@ async function createApp({db,env=process.env,mailSink}={}){
    const links=b.links??u.links,favorites=b.favorites??u.favorites;if(!Array.isArray(links)||links.length>5||!Array.isArray(favorites)||favorites.length>4)V.fail('Use até cinco links e quatro favoritos.');
    const fav=[...new Set(favorites.map(x=>V.integer(x)))];for(const id of fav)if(!await one('SELECT id FROM books WHERE id=$1',[id]))V.fail('Livro favorito não encontrado.');
    if(b.is_private!==undefined&&typeof b.is_private!=='boolean')V.fail('Privacidade inválida.');
-   const result=await one('UPDATE users SET name=$1,bio=$2,avatar=$3,banner=$4,is_private=$5,links=$6,favorites=$7 WHERE id=$8 RETURNING *',[name,bio,V.url(b.avatar??u.avatar,true),V.url(b.banner??u.banner,true),b.is_private??u.is_private,JSON.stringify(links.map(x=>V.url(x))),JSON.stringify(fav),u.id]);
+   const result=await db.transaction(async tx=>{
+     const current=(await tx.query("SELECT *, (username_changed_at IS NULL OR username_changed_at <= NOW()-INTERVAL '10 days') AS username_change_allowed FROM users WHERE id=$1 FOR UPDATE",[u.id])).rows[0];
+     const username=b.username===undefined?current.username:V.username(b.username);
+     if(username!==current.username.toLowerCase()){
+       if(!current.username_change_allowed)V.fail('Você poderá alterar seu @ novamente em '+new Date(new Date(current.username_changed_at).getTime()+10*86400000).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})+'.',409);
+       if((await tx.query('SELECT id FROM users WHERE lower(username)=lower($1) AND id<>$2',[username,u.id])).rows.length)V.fail('Esse @ já está em uso. Escolha outro nome de usuário.',409);
+     }
+     return (await tx.query('UPDATE users SET name=$1,bio=$2,avatar=$3,banner=$4,is_private=$5,links=$6,favorites=$7,username_changed_at=CASE WHEN lower(username)<>$9 THEN NOW() ELSE username_changed_at END,username=$9 WHERE id=$8 RETURNING *',[name,bio,V.url(b.avatar??u.avatar,true),V.url(b.banner??u.banner,true),b.is_private??u.is_private,JSON.stringify(links.map(x=>V.url(x))),JSON.stringify(fav),u.id,username])).rows[0];
+   });
    if(u.is_private&&!result.is_private)await q('UPDATE follows SET approved=TRUE WHERE following_id=$1',[u.id]);res.json(ownUser(result));
  });
  app.get('/api/users/search',auth,async(req,res)=>{const s='%'+V.text(String(req.query.q||''),0,100)+'%';res.json((await q(`SELECT u.id,u.name,u.username,u.avatar,u.bio,u.is_private,EXISTS(SELECT 1 FROM follows f WHERE f.follower_id=$2 AND f.following_id=u.id AND f.approved) following FROM users u WHERE (u.name ILIKE $1 OR u.username ILIKE $1) AND u.id<>$2 ORDER BY u.name LIMIT 40`,[s,req.user.id])).rows);});
@@ -113,7 +124,12 @@ async function createApp({db,env=process.env,mailSink}={}){
  for(const type of ['followers','following'])app.get('/api/users/:id/'+type,auth,async(req,res)=>{const id=V.integer(req.params.id);await requireProfile(req.user.id,id);res.json((await q(`SELECT u.id,u.name,u.username,u.avatar FROM follows f JOIN users u ON u.id=f.${type==='followers'?'follower_id':'following_id'} WHERE f.${type==='followers'?'following_id':'follower_id'}=$1 AND f.approved ORDER BY u.name LIMIT 100`,[id])).rows);});
 
  const bookColumns=`b.*,COALESCE((SELECT round(avg(r.rating),1) FROM reviews r JOIN users u ON u.id=r.user_id WHERE r.book_id=b.id AND ${visible('u','$1')}),0) rating`;
- app.get('/api/books',auth,async(req,res)=>{const s='%'+V.text(String(req.query.q||''),0,150)+'%';const genre=String(req.query.genre||'');res.json((await q(`SELECT ${bookColumns} FROM books b WHERE (b.title ILIKE $2 OR b.author ILIKE $2 OR b.isbn ILIKE $2) AND ($3='' OR b.genre ILIKE $3) ORDER BY b.created_at DESC LIMIT 100`,[req.user.id,s,genre?'%'+genre+'%':''])).rows);});
+ app.get('/api/home',auth,async(req,res)=>{
+   const latest=(await q(`SELECT ${bookColumns} FROM books b ORDER BY b.created_at DESC,b.id DESC LIMIT 12`,[req.user.id])).rows;
+   const rated=(await q(`SELECT b.*,round(avg(r.rating),1) rating,count(r.id)::int review_count FROM books b JOIN reviews r ON r.book_id=b.id JOIN users u ON u.id=r.user_id WHERE ${visible('u','$1')} GROUP BY b.id ORDER BY avg(r.rating) DESC,count(r.id) DESC,b.id LIMIT 6`,[req.user.id])).rows;
+   res.json({latest,rated});
+ });
+ app.get('/api/books',auth,async(req,res)=>{const s='%'+V.text(String(req.query.q||''),0,150)+'%';const genre=String(req.query.genre||'');res.json((await q(`SELECT ${bookColumns} FROM books b WHERE (b.title ILIKE $2 OR b.author ILIKE $2 OR b.isbn ILIKE $2) AND ($3='' OR b.genre = $3) ORDER BY b.created_at DESC LIMIT 100`,[req.user.id,s,genre?canonicalGenre(genre):''])).rows);});
  app.get('/api/books/:id',auth,async(req,res)=>{const b=await one(`SELECT ${bookColumns} FROM books b WHERE b.id=$2`,[req.user.id,V.integer(req.params.id)]);if(!b)V.fail('Livro não encontrado.',404);res.json(b);});
  app.post('/api/books',auth,verified,async(req,res)=>{
    const b=req.body,title=V.text(b.title,1,300),author=V.text(b.author,1,300),isbn=V.isbn(b.isbn),key=V.normalize(title)+'|'+V.normalize(author);
@@ -121,24 +137,25 @@ async function createApp({db,env=process.env,mailSink}={}){
    const candidates=(await q('SELECT * FROM books WHERE author ILIKE $1 ORDER BY created_at DESC LIMIT 1000',['%'+author.split(' ').at(-1)+'%'])).rows;
    const near=candidates.find(x=>V.similar(x.title,title)&&V.similar(x.author,author));if(near)return res.json({...near,existing:true});
    // User supplied provider IDs do not confer verified status.
-   const created=await one('INSERT INTO books(title,author,genre,year,pages,synopsis,cover_url,isbn,dedupe_key,created_by,verified,publisher) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,FALSE,$11) RETURNING *',[title,author,V.text(b.genre||'Geral',1,120),V.text(String(b.year||'').slice(0,20),0,20),b.pages?V.integer(b.pages,1,100000):null,V.text(b.synopsis||'',0,12000),V.url(b.cover_url,true),isbn||null,key,req.user.id,V.text(b.publisher||'',0,300)]);res.status(201).json(created);
+   const created=await one('INSERT INTO books(title,author,genre,year,pages,synopsis,cover_url,isbn,dedupe_key,created_by,verified,publisher) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,FALSE,$11) RETURNING *',[title,author,canonicalGenre(b.genre),V.text(String(b.year||'').slice(0,20),0,20),b.pages?V.integer(b.pages,1,100000):null,V.text(b.synopsis||'',0,12000),V.url(b.cover_url,true),isbn||null,key,req.user.id,V.text(b.publisher||'',0,300)]);res.status(201).json(created);
  });
- const external=async(url,options={})=>{const r=await fetch(url,{...options,signal:AbortSignal.timeout(10000)});if(!r.ok)V.fail('O catálogo externo está indisponível. Tente novamente.',502);return r.json();};
- app.get('/api/catalog/details',auth,async(req,res)=>{const key=String(req.query.key||'');if(!/^\/works\/OL\d+W$/.test(key))V.fail('Referência de obra inválida.');const d=await external('https://openlibrary.org'+key+'.json');res.json({synopsis:(typeof d.description==='string'?d.description:d.description?.value||'').slice(0,12000)});});
- app.get('/api/catalog',auth,async(req,res)=>{const term=V.text(String(req.query.q||''),2,150);if(req.query.isbn)V.isbn(term);const provider=req.query.provider==='google'?'google':'openlibrary';
-   if(provider==='google'){const d=await external('https://www.googleapis.com/books/v1/volumes?q='+encodeURIComponent(req.query.isbn?'isbn:'+term:term)+'&maxResults=20'+(env.GOOGLE_BOOKS_API_KEY?'&key='+encodeURIComponent(env.GOOGLE_BOOKS_API_KEY):''));return res.json((d.items||[]).map(x=>{const v=x.volumeInfo||{};return {title:v.title,publisher:v.publisher||'',author:(v.authors||[]).join(', ')||'Autor não informado',genre:v.categories?.[0]||'Geral',year:v.publishedDate||'',pages:v.pageCount||null,synopsis:v.description||'',cover_url:(v.imageLinks?.thumbnail||'').replace('http:','https:'),isbn:(v.industryIdentifiers||[]).find(x=>x.type==='ISBN_13')?.identifier||''};}));}
-   if(req.query.isbn){const code=V.isbn(term);const data=await external('https://openlibrary.org/api/books?bibkeys='+encodeURIComponent('ISBN:'+code)+'&jscmd=data&format=json');const x=data['ISBN:'+code];return res.json(x?[{title:x.title,author:(x.authors||[]).map(a=>a.name).join(', ')||'Autor não informado',publisher:(x.publishers||[]).map(a=>a.name).join(', ').slice(0,300),year:x.publish_date||'',pages:x.number_of_pages||null,genre:x.subjects?.[0]?.name?.slice(0,120)||'Geral',cover_url:x.cover?.large||x.cover?.medium||'',isbn:code,synopsis:x.excerpts?.[0]?.text?.slice(0,12000)||''}]:[]);}
-   const d=await external('https://openlibrary.org/search.json?'+(req.query.isbn?'isbn=':'q=')+encodeURIComponent(term)+'&limit=20&fields=key,title,author_name,first_publish_year,number_of_pages_median,isbn,cover_i,subject,publisher');res.json((d.docs||[]).map(x=>({title:x.title,external_key:x.key,publisher:(x.publisher||[])[0]?.slice(0,300)||'',author:(x.author_name||[]).join(', ')||'Autor não informado',year:String(x.first_publish_year||''),pages:x.number_of_pages_median||null,genre:x.subject?.[0]?.slice(0,120)||'Geral',cover_url:x.cover_i?'https://covers.openlibrary.org/b/id/'+x.cover_i+'-M.jpg':'',isbn:(x.isbn||[]).find(s=>{try{return V.isbn(s);}catch{return false;}})||'',synopsis:''})));
- });
- app.post('/api/books/:id/report',auth,verified,async(req,res)=>{await q('INSERT INTO reports(user_id,book_id,reason) VALUES($1,$2,$3)',[req.user.id,V.integer(req.params.id),V.text(req.body.reason,5,1000)]);res.status(201).json({ok:true});});
+ app.put('/api/books/:id/genre',auth,verified,async(req,res)=>{const id=V.integer(req.params.id),b=await one('SELECT * FROM books WHERE id=$1',[id]);if(!b)V.fail('Livro não encontrado.',404);if(String(b.created_by)!==String(req.user.id)&&!req.user.is_admin)V.fail('Só o responsável pelo cadastro ou a moderação pode corrigir o gênero.',403);if(!GENRES.includes(req.body.genre))V.fail('Escolha um gênero da lista.');res.json(await one('UPDATE books SET genre=$1 WHERE id=$2 RETURNING *',[req.body.genre,id]));});
+ const external=async(url,options={})=>{const r=await fetchImpl(url,{...options,signal:AbortSignal.timeout(10000)});if(!r.ok)V.fail('O catálogo externo está indisponível. Tente novamente.',502);return r.json();};
+ const catalog=createCatalog({env,fetchImpl});
+ const discovery=createDiscovery({db,catalog});
+ app.get('/api/discovery',auth,async(req,res)=>{const d=await discovery.get();res.json({date:d.date,weekStart:d.weekStart,genre:d.genre,subtitle:d.subtitle,book:d.book});});
+ app.get('/api/catalog/details',auth,async(req,res)=>{const isbn=V.isbn(req.query.isbn);if(!isbn)V.fail('Informe o ISBN da edição.');res.json(await catalog.enrich(isbn)||{});});
+ app.get('/api/catalog',auth,async(req,res)=>res.json(await catalog.search(String(req.query.q||''),{isbn:req.query.isbn==='true'})));
+
  app.get('/api/shelf',auth,async(req,res)=>{const id=req.query.user?V.integer(req.query.user):req.user.id;await requireProfile(req.user.id,id);res.json((await q('SELECT s.*,b.title,b.author,b.cover_url,b.pages,b.genre FROM shelves s JOIN books b ON b.id=s.book_id WHERE s.user_id=$1 ORDER BY s.updated_at DESC',[id])).rows);});
  app.put('/api/shelf/:id',auth,verified,async(req,res)=>{
    const id=V.integer(req.params.id),b=req.body;if(!['lendo','quero-ler','lido','abandonado','pausado'].includes(b.status))V.fail('Estado de leitura inválido.');
    const book=await one('SELECT * FROM books WHERE id=$1',[id]);if(!book)V.fail('Livro não encontrado.',404);const old=await one('SELECT * FROM shelves WHERE user_id=$1 AND book_id=$2',[req.user.id,id]);
-   const page=b.current_page===undefined?Number(old?.current_page||0):V.integer(b.current_page,0,100000);if(book.pages&&page>book.pages)V.fail('A página atual supera o total do livro.');
+   let page=b.current_page===undefined?Number(old?.current_page||0):V.integer(b.current_page,0,100000);if(book.pages&&page>book.pages)V.fail('A página atual supera o total do livro.');if(b.status==='lido'&&book.pages)page=Number(book.pages);
    const progress=b.status==='lido'?100:book.pages?Math.round(page/book.pages*100):V.integer(b.progress??old?.progress??0,0,100);
    const tags=b.tags??old?.tags??[];if(!Array.isArray(tags)||tags.length>20)V.fail('Use até 20 etiquetas.');const cleanTags=[...new Set(tags.map(x=>V.text(x,1,40)))];
-   const start=b.started_on?V.date(b.started_on):old?.started_on?new Date(old.started_on).toISOString().slice(0,10):null,finish=b.status==='lido'?(b.finished_on?V.date(b.finished_on):today()):null;
+   const start=Object.hasOwn(b,'started_on')?(b.started_on?V.date(b.started_on):null):old?.started_on?new Date(old.started_on).toISOString().slice(0,10):null;
+   const finish=b.status==='lido'?(b.finished_on?V.date(b.finished_on):old?.status==='lido'&&old.finished_on?new Date(old.finished_on).toISOString().slice(0,10):today()):null;
    if(finish&&(finish>today()||(start&&String(start).slice(0,10)>finish)))V.fail('As datas de leitura não são válidas.');
    const row=await db.transaction(async tx=>{await tx.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[req.user.id]);const previous=(await tx.query('SELECT status FROM shelves WHERE user_id=$1 AND book_id=$2',[req.user.id,id])).rows[0];
      const r=await tx.query('INSERT INTO shelves(user_id,book_id,status,progress,current_page,tags,started_on,finished_on) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(user_id,book_id) DO UPDATE SET status=EXCLUDED.status,progress=EXCLUDED.progress,current_page=EXCLUDED.current_page,tags=EXCLUDED.tags,started_on=EXCLUDED.started_on,finished_on=EXCLUDED.finished_on,updated_at=NOW() RETURNING *',[req.user.id,id,b.status,progress,page,JSON.stringify(cleanTags),start,finish]);
@@ -194,14 +211,26 @@ async function createApp({db,env=process.env,mailSink}={}){
    const url=new URL(p==='google'?'https://accounts.google.com/o/oauth2/v2/auth':'https://github.com/login/oauth/authorize');const params={client_id:id,redirect_uri:origin+'/api/auth/oauth/'+p+'/callback',state,scope:p==='google'?'openid email profile':'read:user user:email',response_type:'code',code_challenge:crypto.createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'};Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));res.redirect(url.href);
  });
  app.get('/api/auth/oauth/:provider/callback',async(req,res)=>{
+  try{
+   if(req.query.error)return res.redirect('/#login?oauth_error=cancelled');
    const p=req.params.provider,state=String(req.query.state||''),browser=cookie(req,'bc_oauth');if(!['google','github'].includes(p)||!browser||browser!==state)V.fail('Estado de login inválido. Recomece a entrada.');
    const s=await one('DELETE FROM oauth_states WHERE id=$1 AND provider=$2 AND expires_at>NOW() RETURNING *',[hash(state),p]);if(!s)V.fail('Login expirado.');res.clearCookie('bc_oauth',{path:'/api/auth/oauth'});
    const tokens=await external(p==='google'?'https://oauth2.googleapis.com/token':'https://github.com/login/oauth/access_token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:new URLSearchParams({client_id:env[p.toUpperCase()+'_CLIENT_ID'],client_secret:env[p.toUpperCase()+'_CLIENT_SECRET'],code:String(req.query.code||''),redirect_uri:origin+'/api/auth/oauth/'+p+'/callback',grant_type:'authorization_code',code_verifier:s.verifier})});if(!tokens.access_token)V.fail('Não foi possível validar o login social.');
    const headers={Authorization:'Bearer '+tokens.access_token,Accept:'application/json','User-Agent':'BookClub'};const profile=await external(p==='google'?'https://openidconnect.googleapis.com/v1/userinfo':'https://api.github.com/user',{headers});
-   let email=profile.email,valid=profile.email_verified;if(p==='github'){const emails=await external('https://api.github.com/user/emails',{headers});email=emails.find(e=>e.primary&&e.verified)?.email;valid=!!email;}if(!email||!valid)V.fail('O provedor precisa fornecer um e-mail confirmado.');
+   let email=profile.email,valid=profile.email_verified===true;if(p==='github'){const emails=await external('https://api.github.com/user/emails',{headers});email=emails.find(e=>e.primary&&e.verified)?.email;valid=!!email;}if(!email||!valid)V.fail('O provedor precisa fornecer um e-mail confirmado.');
+   const subject=String(profile.sub||profile.id||'');if(!subject||subject.length>255)V.fail('Perfil do provedor inválido.');
    let u=await one('SELECT u.* FROM oauth_accounts a JOIN users u ON u.id=a.user_id WHERE a.provider=$1 AND a.subject=$2',[p,String(profile.sub||profile.id)]);
-   if(!u){if(await one('SELECT id FROM users WHERE lower(email)=lower($1)',[email]))V.fail('Já existe uma conta com esse e-mail. Entre usando sua senha.');u=await db.transaction(async tx=>{const r=await tx.query('INSERT INTO users(name,username,email,password_hash,email_verified) VALUES($1,$2,$3,$4,TRUE) RETURNING *',[String(profile.name||profile.login||'Leitor').slice(0,120),'leitor_'+random().slice(0,12).toLowerCase(),email,await bcrypt.hash(random(),12)]);await tx.query('INSERT INTO oauth_accounts(provider,subject,user_id) VALUES($1,$2,$3)',[p,String(profile.sub||profile.id),r.rows[0].id]);return r.rows[0];});}
+   if(!u){u=await db.transaction(async tx=>{
+     await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))',[String(email).toLowerCase()]);
+     const linked=(await tx.query('SELECT u.* FROM oauth_accounts a JOIN users u ON u.id=a.user_id WHERE a.provider=$1 AND a.subject=$2',[p,subject])).rows[0];if(linked)return linked;
+     let account=(await tx.query('SELECT * FROM users WHERE lower(email)=lower($1)',[email])).rows[0];
+     if(account&&!(p==='google'&&profile.email_verified===true&&(/@gmail\.com$/i.test(email)||typeof profile.hd==='string'&&profile.hd.length>0)))V.fail('Já existe uma conta com esse e-mail. Entre com sua senha para continuar.');
+     if(!account)account=(await tx.query('INSERT INTO users(name,username,email,password_hash,email_verified,avatar) VALUES($1,$2,$3,$4,TRUE,$5) RETURNING *',[String(profile.name||profile.login||'Leitor').slice(0,120),'leitor_'+random().slice(0,12).toLowerCase(),V.text(email,3,255),await bcrypt.hash(random(),12),(()=>{try{return V.url(profile.picture||'',true);}catch{return '';}})()])).rows[0];
+     else account=(await tx.query('UPDATE users SET email_verified=TRUE WHERE id=$1 RETURNING *',[account.id])).rows[0];
+     await tx.query('INSERT INTO oauth_accounts(provider,subject,user_id) VALUES($1,$2,$3)',[p,subject,account.id]);return account;
+   });}
    await session(res,u);res.redirect('/#home');
+  }catch(error){res.clearCookie('bc_oauth',{path:'/api/auth/oauth'});res.redirect('/#login?oauth_error='+encodeURIComponent(error.status&&error.status<500?error.message:'Não foi possível entrar com o provedor. Tente novamente.'));}
  });
  app.use('/api',(req,res)=>res.status(404).json({error:'Recurso não encontrado.'}));
  // Explicit allowlist: .env, SQL, backups, server code and database files are inaccessible.
