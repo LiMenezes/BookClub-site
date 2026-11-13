@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 12
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: ci-only-password
@@ -36,6 +36,11 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm audit --omit=dev --audit-level=moderate
+      - name: Install matching PostgreSQL 17 client tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --yes postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
       - name: Check PostgreSQL client tools
         run: pg_dump --version && pg_restore --version
       - run: npm run test:postgres
