@@ -30,7 +30,7 @@ async function createApp({db,env=process.env,mailSink,fetchImpl=fetch}={}){
  if(db.harden)await db.harden();
  const app=express();app.disable('x-powered-by');if(env.TRUST_PROXY)app.set('trust proxy',V.integer(env.TRUST_PROXY,1,3));
  const prod=env.NODE_ENV==='production';
- const origin=env.APP_ORIGIN||`http://localhost:${env.PORT||3000}`;
+ const origin=env.APP_ORIGIN||env.RENDER_EXTERNAL_URL||`http://localhost:${env.PORT||3000}`;
 
  const secure=prod;
  app.use((req,res,next)=>{

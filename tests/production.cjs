@@ -1,6 +1,17 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
 const {productionConfig}=require('../backend/config');const {sendMail,mailConfigured}=require('../backend/mailer');const {schemaName}=require('../backend/db');
 const base={NODE_ENV:'production',DB_DRIVER:'postgres',DATABASE_URL:'postgresql://test:only@localhost/test',APP_ORIGIN:'https://bookclub.example.test',BREVO_API_KEY:'test-only',MAIL_FROM:'BookClub <leitura@example.test>',REQUIRE_EMAIL:'true'};
+test('Render: origem HTTPS automática e senha separada sem erro de codificação',()=>{
+ const {connectionURL}=require('../backend/db'),{pgEnvironment}=require('../backend/backup');
+ assert.deepEqual(productionConfig({...base,APP_ORIGIN:'',RENDER_EXTERNAL_URL:'https://bookclub.onrender.com'}),[]);
+ assert.ok(productionConfig({...base,APP_ORIGIN:'http://inseguro.test',RENDER_EXTERNAL_URL:'https://bookclub.onrender.com'}).length);
+ const env={DATABASE_URL:'postgresql://bookclub@localhost/postgres',DB_PASSWORD:'senha@:/#%de-teste'};
+ assert.equal(decodeURIComponent(new URL(connectionURL(env)).password),env.DB_PASSWORD);
+ assert.equal(pgEnvironment(env.DATABASE_URL,env).PGPASSWORD,env.DB_PASSWORD);
+ const explicit='postgresql://bookclub:senha-da-url@localhost/postgres';
+ assert.equal(new URL(connectionURL({...env,DATABASE_URL:explicit})).password,'senha-da-url');
+ assert.equal(pgEnvironment(explicit,env).PGPASSWORD,'senha-da-url');
+});
 test('Produção: configuração falha de forma fechada',()=>{assert.ok(productionConfig({}).length>=4);assert.deepEqual(productionConfig(base),[]);assert.ok(productionConfig({...base,APP_ORIGIN:'http://example.test'}).length);assert.ok(productionConfig({...base,APP_ORIGIN:'https://bookclub.example.test/'}).length);assert.ok(productionConfig({...base,REQUIRE_EMAIL:'false'}).length);assert.throws(()=>schemaName({DB_SCHEMA:'public; DROP TABLE users'}));assert.equal(schemaName({}),'bookclub');});
 test('E-mail por HTTPS: Brevo envia apenas o payload necessário',async()=>{let call;await sendMail({to:'leitora@example.test',subject:'Confirmação',text:'Link de teste'},base,{fetchImpl:async(url,options)=>{call={url,options};return {ok:true};}});assert.equal(call.url,'https://api.brevo.com/v3/smtp/email');assert.equal(call.options.headers['api-key'],'test-only');const body=JSON.parse(call.options.body);assert.equal(body.sender.email,'leitura@example.test');assert.equal(body.to[0].email,'leitora@example.test');assert.equal(body.textContent,'Link de teste');assert.equal(mailConfigured(base),true);assert.equal(mailConfigured({}),false);});
 test('E-mail por HTTPS: Resend usa idempotência e recusa falhas do provedor',async()=>{let key;const env={RESEND_API_KEY:'test-only',MAIL_FROM:'BookClub <leitura@example.test>'};await sendMail({to:'a@example.test',subject:'Teste',text:'Teste'},env,{fetchImpl:async(url,options)=>{assert.equal(url,'https://api.resend.com/emails');key=options.headers['Idempotency-Key'];return{ok:true};}});assert.match(key,/^[a-f0-9]{64}$/);await assert.rejects(()=>sendMail({to:'a@example.test',subject:'Teste',text:'Teste'},env,{fetchImpl:async()=>({ok:false,status:403})}),/HTTP 403/);});

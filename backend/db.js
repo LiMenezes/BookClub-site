@@ -1,6 +1,7 @@
 const path=require('node:path');
 const fs=require('node:fs');
 function schemaName(env){const schema=env.DB_SCHEMA||'bookclub';if(!/^[a-z][a-z0-9_]{0,40}$/.test(schema))throw new Error('DB_SCHEMA inválido.');return schema;}
+function connectionURL(env){if(!env.DATABASE_URL)return '';const u=new URL(env.DATABASE_URL);if(!u.password&&env.DB_PASSWORD)u.password=encodeURIComponent(env.DB_PASSWORD);return u.href;}
 async function openDatabase(env=process.env){
  if(env.DB_DRIVER==='pglite'){
   if(env.NODE_ENV==='production')throw new Error('Use PostgreSQL gerenciado em produção.');
@@ -9,7 +10,7 @@ async function openDatabase(env=process.env){
   return {...wrap(pg),exec:sql=>pg.exec(sql),transaction:fn=>pg.transaction(tx=>fn(wrap(tx))),close:()=>pg.close(),harden:async()=>{}};
  }
  if(!env.DATABASE_URL)throw new Error('Configure DATABASE_URL ou use npm run local.');
- const schema=schemaName(env),{Pool}=require('pg');let connectionString=env.DATABASE_URL,ssl;
+ const schema=schemaName(env),{Pool}=require('pg');let connectionString=connectionURL(env),ssl;
  if(env.DB_SSL==='verify'||env.NODE_ENV==='production'){
   const url=new URL(connectionString);for(const key of ['sslmode','sslcert','sslkey','sslrootcert'])url.searchParams.delete(key);connectionString=url.href;
   ssl={rejectUnauthorized:true,...(env.DB_SSL_CA?{ca:env.DB_SSL_CA.replace(/\\n/g,'\n')}:{})};
@@ -26,4 +27,4 @@ async function openDatabase(env=process.env){
   },transaction:async fn=>{const client=await pool.connect();try{await client.query('BEGIN');const result=await fn(client);await client.query('COMMIT');return result;}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}}
  };
 }
-module.exports={openDatabase,schemaName};
+module.exports={openDatabase,schemaName,connectionURL};

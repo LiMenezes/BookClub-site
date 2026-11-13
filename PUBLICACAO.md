@@ -33,6 +33,8 @@ Fontes: [Render gratuito](https://render.com/docs/free), [Blueprints](https://re
 
 Use a conexão apropriada para backend persistente, preferencialmente o pooler de sessão quando precisar de IPv4. Guarde a URL exclusivamente no ambiente do servidor. Configure `DB_SSL=verify` e a CA fornecida pelo projeto em `DB_SSL_CA` quando necessária. O cliente não desativa a verificação TLS.
 
+A senha pode ser informada separadamente em `DB_PASSWORD` quando `DATABASE_URL` não incluir senha; o servidor codifica os caracteres especiais. No Render, `RENDER_EXTERNAL_URL` é utilizado automaticamente quando `APP_ORIGIN` não foi definido. Use as ferramentas de backup da mesma versão principal do PostgreSQL do banco.
+
 As migrações usam somente o schema configurado em `DB_SCHEMA`. Se existir uma base anterior em `public`, a mudança para `bookclub` não a transfere nem a apaga automaticamente. A migração dos dados locais precisa ser planejada antes de disponibilizar a instalação pública.
 
 Fontes: [conexões Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres), [TLS](https://supabase.com/docs/guides/platform/ssl-enforcement).
