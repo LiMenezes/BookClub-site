@@ -1,6 +1,6 @@
 const fs=require('node:fs');const path=require('node:path');const crypto=require('node:crypto');
 async function prepareSchema(db,after=async()=>{}){
- const files=['schema.sql','migrate.sql'].map(file=>fs.readFileSync(path.join(__dirname,file),'utf8'));
+ const files=['schema.sql','migrate.sql'].map(file=>fs.readFileSync(fs.existsSync(path.join(__dirname,file))?path.join(__dirname,file):path.join(process.cwd(),'backend',file),'utf8'));
  const version=crypto.createHash('sha256').update(files.join('\n')).digest('hex');
  return db.transaction(async tx=>{
   await tx.query('SELECT pg_advisory_xact_lock(817235)');
