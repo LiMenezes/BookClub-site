@@ -8,7 +8,7 @@ const {openDatabase}=require('./db');
 const V=require('./validation');
 const {createCatalog}=require('./catalog');
 const {createDiscovery}=require('./discovery');
-const {GENRES,genre:canonicalGenre,normalizeStoredGenres}=require('./genres');
+const {GENRES,genre:canonicalGenre,normalizeGenres}=require('./genres');
 const {mailConfigured,sendMail}=require('./mailer');
 const {productionConfig}=require('./config');
 const hash=s=>crypto.createHash('sha256').update(s).digest('hex');
@@ -19,15 +19,7 @@ const cookie=(req,key)=>String(req.headers.cookie||'').split(';').map(x=>x.trim(
 async function createApp({db,env=process.env,mailSink,fetchImpl=fetch}={}){
  if(env.NODE_ENV==='production'){const errors=productionConfig(env);if(errors.length)throw new Error(errors.join(' '));}
  db ||= await openDatabase(env);
- await db.transaction(async tx=>{await tx.query('SELECT pg_advisory_xact_lock(817235)');
-   // Both schema files are migration inputs, never publicly served.
-   if(tx.query) {for(const file of ['schema.sql','migrate.sql']){
-     const statements=fs.readFileSync(path.join(__dirname,file),'utf8').split(';').map(s=>s.trim()).filter(Boolean);
-     for(const sql of statements)await tx.query(sql);
-   }}
- });
- await normalizeStoredGenres(db);
- if(db.harden)await db.harden();
+ try{await require('./prepare-schema').prepareSchema(db,async tx=>{await normalizeGenres(tx);if(db.harden)await db.harden(tx);});}catch(error){await db.close();throw error;}
  const app=express();app.disable('x-powered-by');if(env.TRUST_PROXY)app.set('trust proxy',V.integer(env.TRUST_PROXY,1,3));
  const prod=env.NODE_ENV==='production';
  const origin=env.APP_ORIGIN||env.RENDER_EXTERNAL_URL||`http://localhost:${env.PORT||3000}`;
@@ -48,8 +40,16 @@ async function createApp({db,env=process.env,mailSink,fetchImpl=fetch}={}){
  const eventResponses=new Set();
  const updates=new (require('node:events').EventEmitter)();updates.setMaxListeners(500);
  app.use('/api',(req,res,next)=>{if(['POST','PUT','DELETE','PATCH'].includes(req.method))res.on('finish',()=>{if(res.statusCode<400)updates.emit('change');});next();});
- const limits=new Map();
- const limiter=(limit,ms)=> (req,res,next)=>{const k=req.ip+':'+req.path;const now=Date.now();let x=limits.get(k);if(!x||x.until<now)x={n:0,until:now+ms};x.n++;limits.set(k,x);if(x.n>limit){res.set('Retry-After',String(Math.ceil((x.until-now)/1000)));return res.status(429).json({error:'Muitas tentativas. Tente novamente em alguns minutos.'});}next();};
+ const limits=new Map();let cleanupAfter=0;
+ const limiter=(limit,ms)=> async(req,res,next)=>{const k=req.ip+':'+req.path;const now=Date.now();
+ if(env.SERVERLESS==='true'){
+  if(now>=cleanupAfter){cleanupAfter=now+60000;try{await db.query('DELETE FROM request_limits WHERE expires_at < NOW()');}catch(e){cleanupAfter=0;throw e;}}
+  const bucket=Math.floor(now/ms),key=hash(k+':'+limit+':'+ms+':'+bucket);
+  const result=await db.query('INSERT INTO request_limits(id,hits,expires_at) VALUES($1,1,$2) ON CONFLICT(id) DO UPDATE SET hits=request_limits.hits+1 RETURNING hits',[key,new Date((bucket+1)*ms).toISOString()]);
+  if(result.rows[0].hits>limit){res.set('Retry-After',String(Math.max(1,Math.ceil(((bucket+1)*ms-now)/1000))));return res.status(429).json({error:'Muitas tentativas. Tente novamente em alguns minutos.'});}
+  return next();
+ }
+let x=limits.get(k);if(!x||x.until<now)x={n:0,until:now+ms};x.n++;limits.set(k,x);if(x.n>limit){res.set('Retry-After',String(Math.ceil((x.until-now)/1000)));return res.status(429).json({error:'Muitas tentativas. Tente novamente em alguns minutos.'});}next();};
  const cleanTimer=setInterval(()=>{for(const [k,v]of limits)if(v.until<Date.now())limits.delete(k);},60000);cleanTimer.unref();
  app.use('/api',limiter(240,60000));app.use('/api/auth',limiter(20,60000));
  const q=(sql,p=[])=>db.query(sql,p);
@@ -77,7 +77,7 @@ async function createApp({db,env=process.env,mailSink,fetchImpl=fetch}={}){
    else if(mailConfigured(env))await sendMail(mail,env);
    else V.fail('Envio de e-mail não configurado no servidor.',503);
  };
- app.get('/api/config',(req,res)=>res.json({version:"2.6.0",genres:GENRES,email:!!(mailConfigured(env)||mailSink),oauth:{google:!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET),github:!!(env.GITHUB_CLIENT_ID&&env.GITHUB_CLIENT_SECRET)},local:env.DB_DRIVER==='pglite'}));
+ app.get('/api/config',(req,res)=>res.json({realtime:env.SERVERLESS==='true'?'poll':'stream',version:"2.6.0",genres:GENRES,email:!!(mailConfigured(env)||mailSink),oauth:{google:!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET),github:!!(env.GITHUB_CLIENT_ID&&env.GITHUB_CLIENT_SECRET)},local:env.DB_DRIVER==='pglite'}));
  app.get('/api/health',async(req,res)=>{await q('SELECT 1');res.json({ok:true});});
  app.post('/api/auth/register',async(req,res)=>{
    const name=V.text(req.body.name,2,120),username=V.username(req.body.username);
@@ -90,7 +90,7 @@ async function createApp({db,env=process.env,mailSink,fetchImpl=fetch}={}){
  app.post('/api/auth/login',async(req,res)=>{const id=V.text(req.body.identifier,1,255).replace(/^@/,'');const u=await one('SELECT * FROM users WHERE lower(email)=lower($1) OR lower(username)=lower($1)',[id]);const ok=await bcrypt.compare(String(req.body.password||''),u?.password_hash||'$2b$12$IB0NtzZ.3uQDCuMqKO3X9e/8IoLp.dS6IXc5q1cUS9sXWH97D55lq');if(!u||!ok)V.fail('E-mail/usuário ou senha inválidos.',401);await session(res,u);res.json({user:ownUser(u)});});
  app.post('/api/auth/logout',async(req,res)=>{const t=cookie(req,'bc_session');if(t)await q('DELETE FROM sessions WHERE id=$1',[hash(t)]);res.clearCookie('bc_session',{path:'/',httpOnly:true,secure,sameSite:'lax'});res.json({ok:true});});
  app.get('/api/auth/me',auth,(req,res)=>res.json(ownUser(req.user)));
- app.get('/api/events',auth,(req,res)=>{eventResponses.add(res);res.set({'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'});res.flushHeaders();res.write('retry: 10000\n\n');
+ app.get('/api/events',auth,(req,res)=>{if(env.SERVERLESS==='true')return res.status(204).end();eventResponses.add(res);res.set({'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'});res.flushHeaders();res.write('retry: 10000\n\n');
    const change=()=>res.write('event: change\ndata: {}\n\n');updates.on('change',change);
    const timer=setInterval(async()=>{try{const valid=await one('SELECT 1 FROM sessions WHERE id=$1 AND expires_at>NOW()',[hash(cookie(req,'bc_session')||'')]);if(!valid)return res.end();res.write(': heartbeat\n\n');}catch{res.end();}},25000);
    req.on('close',()=>{clearInterval(timer);updates.off('change',change);eventResponses.delete(res);});

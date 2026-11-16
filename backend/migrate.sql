@@ -47,3 +47,8 @@ ALTER TABLE books ADD COLUMN IF NOT EXISTS source_genre TEXT;
 
 CREATE TABLE IF NOT EXISTS discovery_days(day DATE PRIMARY KEY,week_start DATE NOT NULL,genre TEXT NOT NULL,book JSONB NOT NULL);
 CREATE INDEX IF NOT EXISTS discovery_week_idx ON discovery_days(week_start);
+
+CREATE TABLE IF NOT EXISTS request_limits(id TEXT PRIMARY KEY,hits INTEGER NOT NULL DEFAULT 1,expires_at TIMESTAMPTZ NOT NULL);
+CREATE INDEX IF NOT EXISTS request_limits_expiry_idx ON request_limits(expires_at);
+ALTER TABLE request_limits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE schema_releases ENABLE ROW LEVEL SECURITY;
