@@ -11,7 +11,9 @@ Estado: preparação local, ainda sem publicação no Netlify. O Render continua
 - Usar Free, sem recarga automática ou adicionais pagos. A franquia de créditos pode pausar o projeto ao atingir o limite.
 - Preservar o projeto PostgreSQL Supabase atual e o schema bookclub. Não criar outro banco e não importar cadastros locais.
 
-## Variáveis privadas (escopo Functions)
+## Variáveis privadas do projeto
+
+No plano Free, usar os escopos padrão do Netlify. O build estático não lê nem incorpora essas variáveis às páginas. A restrição individual de escopo é um recurso pago e não deve ser contratada.
 
 Copiar apenas estas configurações do serviço BookClub no Render para o projeto Netlify, após autorização da proprietária:
 NODE_ENV=production
