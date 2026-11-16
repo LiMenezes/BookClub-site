@@ -77,7 +77,7 @@ let x=limits.get(k);if(!x||x.until<now)x={n:0,until:now+ms};x.n++;limits.set(k,x
    else if(mailConfigured(env))await sendMail(mail,env);
    else V.fail('Envio de e-mail não configurado no servidor.',503);
  };
- app.get('/api/config',(req,res)=>res.json({realtime:env.SERVERLESS==='true'?'poll':'stream',version:"2.6.0",genres:GENRES,email:!!(mailConfigured(env)||mailSink),oauth:{google:!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET),github:!!(env.GITHUB_CLIENT_ID&&env.GITHUB_CLIENT_SECRET)},local:env.DB_DRIVER==='pglite'}));
+ app.get('/api/config',(req,res)=>res.json({realtime:env.SERVERLESS==='true'?'poll':'stream',version:"2.6.1",genres:GENRES,email:!!(mailConfigured(env)||mailSink),oauth:{google:!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET),github:!!(env.GITHUB_CLIENT_ID&&env.GITHUB_CLIENT_SECRET)},local:env.DB_DRIVER==='pglite'}));
  app.get('/api/health',async(req,res)=>{await q('SELECT 1');res.json({ok:true});});
  app.post('/api/auth/register',async(req,res)=>{
    const name=V.text(req.body.name,2,120),username=V.username(req.body.username);

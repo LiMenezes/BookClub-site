@@ -1,6 +1,6 @@
 {
   "name": "bookclub",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "private": true,
   "description": "BookClub - rede social literÃ¡ria com autenticaÃ§Ã£o, PostgreSQL e Google Books",
   "main": "backend/server.js",
