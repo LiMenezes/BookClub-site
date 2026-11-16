@@ -1,21 +1,23 @@
 {
   "name": "bookclub",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "private": true,
-  "description": "BookClub - rede social literária com autenticação, PostgreSQL e Google Books",
+  "description": "BookClub - rede social literÃ¡ria com autenticaÃ§Ã£o, PostgreSQL e Google Books",
   "main": "backend/server.js",
   "scripts": {
     "start": "node backend/local.js",
     "local": "node backend/local.js",
     "start:postgres": "node backend/server.js",
     "dev": "node --watch backend/local.js",
-    "test": "node --test --test-concurrency=1 tests/integration.cjs tests/production.cjs tests/catalog.cjs tests/oauth.cjs tests/discovery.cjs tests/usernames.cjs",
+    "test": "node --test --test-concurrency=1 tests/integration.cjs tests/production.cjs tests/catalog.cjs tests/oauth.cjs tests/discovery.cjs tests/usernames.cjs tests/serverless.cjs",
     "moderator": "node backend/moderator.js",
     "test:postgres": "node --test tests/postgres.cjs",
     "preflight": "node backend/preflight.js",
     "backup": "node backend/backup.js backup",
     "restore": "node backend/backup.js restore",
-    "setup:google": "node backend/setup-google.js"
+    "setup:google": "node backend/setup-google.js",
+    "migrate": "node backend/migrate.js",
+    "build:netlify": "node scripts/build-netlify.cjs"
   },
   "engines": {
     "node": ">=22"
@@ -26,6 +28,7 @@
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "nodemailer": "^10.2.1",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "serverless-http": "4.0.0"
   }
 }

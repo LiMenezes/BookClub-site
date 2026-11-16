@@ -1,0 +1,10 @@
+const fs=require('node:fs');const path=require('node:path');
+const root=path.resolve(__dirname,'..'),dest=path.join(root,'dist'),source=path.join(root,'public');
+if(path.dirname(dest)!==root||path.basename(dest)!=='dist')throw Error('Destino inválido.');
+fs.rmSync(dest,{recursive:true,force:true});fs.mkdirSync(dest,{recursive:true});
+fs.copyFileSync(path.join(source,'index.html'),path.join(dest,'index.html'));
+fs.cpSync(source,path.join(dest,'assets'),{recursive:true,filter:p=>!path.basename(p).startsWith('.')&&path.basename(p)!=='index.html'});
+fs.writeFileSync(path.join(dest,'_redirects'),'/api/* /.netlify/functions/api/:splat 200!\n');
+const csp="default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+fs.writeFileSync(path.join(dest,'_headers'),'/*\n  X-Content-Type-Options: nosniff\n  X-Frame-Options: DENY\n  Referrer-Policy: same-origin\n  Strict-Transport-Security: max-age=31536000\n  Permissions-Policy: camera=(self), microphone=(), geolocation=()\n  Content-Security-Policy: '+csp+'\n/\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n');
+console.log('Páginas e assets preparados; nenhum arquivo privado foi publicado.');

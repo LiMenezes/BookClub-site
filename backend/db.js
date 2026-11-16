@@ -6,7 +6,7 @@ async function openDatabase(env=process.env){
  if(env.DB_DRIVER==='pglite'){
   if(env.NODE_ENV==='production')throw new Error('Use PostgreSQL gerenciado em produção.');
   const {PGlite}=require('@electric-sql/pglite');const dir=env.DATA_DIR||path.join(__dirname,'..','data','postgres-local');if(dir!=='memory://')fs.mkdirSync(dir,{recursive:true});
-  const pg=new PGlite(dir);await pg.waitReady;const wrap=db=>({query:async(sql,params)=>{const r=await db.query(sql,params);return {...r,rowCount:r.affectedRows??r.rows.length};}});
+  const pg=new PGlite(dir);await pg.waitReady;const wrap=db=>({exec:sql=>db.exec(sql),query:async(sql,params)=>{const r=await db.query(sql,params);return {...r,rowCount:r.affectedRows??r.rows.length};}});
   return {...wrap(pg),exec:sql=>pg.exec(sql),transaction:fn=>pg.transaction(tx=>fn(wrap(tx))),close:()=>pg.close(),harden:async()=>{}};
  }
  if(!env.DATABASE_URL)throw new Error('Configure DATABASE_URL ou use npm run local.');
@@ -19,12 +19,12 @@ async function openDatabase(env=process.env){
  pool.on('error',()=>console.error('Conexão ociosa com o banco interrompida.'));
  try{await pool.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);await pool.query(`REVOKE ALL ON SCHEMA "${schema}" FROM PUBLIC`);}catch(e){await pool.end();throw e;}
  return {query:(sql,p)=>pool.query(sql,p),exec:sql=>pool.query(sql),close:()=>pool.end(),schema,
-  harden:async()=>{
-   await pool.query(`REVOKE ALL ON ALL TABLES IN SCHEMA "${schema}" FROM PUBLIC`);
-   await pool.query(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA "${schema}" FROM PUBLIC`);
-   const roles=await pool.query("SELECT rolname FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role')");
-   for(const {rolname}of roles.rows){await pool.query(`REVOKE ALL ON SCHEMA "${schema}" FROM "${rolname}"`);await pool.query(`REVOKE ALL ON ALL TABLES IN SCHEMA "${schema}" FROM "${rolname}"`);await pool.query(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA "${schema}" FROM "${rolname}"`);}
-  },transaction:async fn=>{const client=await pool.connect();try{await client.query('BEGIN');const result=await fn(client);await client.query('COMMIT');return result;}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}}
+  harden:async(target=pool)=>{
+   await target.query(`REVOKE ALL ON ALL TABLES IN SCHEMA "${schema}" FROM PUBLIC`);
+   await target.query(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA "${schema}" FROM PUBLIC`);
+   const roles=await target.query("SELECT rolname FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role')");
+   for(const {rolname}of roles.rows){await target.query(`REVOKE ALL ON SCHEMA "${schema}" FROM "${rolname}"`);await target.query(`REVOKE ALL ON ALL TABLES IN SCHEMA "${schema}" FROM "${rolname}"`);await target.query(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA "${schema}" FROM "${rolname}"`);}
+  },transaction:async fn=>{const client=await pool.connect();try{await client.query('BEGIN');const result=await fn({query:(sql,p)=>client.query(sql,p),exec:sql=>client.query(sql)});await client.query('COMMIT');return result;}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}}
  };
 }
 module.exports={openDatabase,schemaName,connectionURL};
